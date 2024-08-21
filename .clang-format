@@ -1,0 +1,22 @@
+---
+Language: Cpp
+BasedOnStyle: Webkit
+DisableFormat: false
+TabWidth: 4
+UseTab: ForIndentation # Always
+IndentWidth: 4
+SortIncludes: true
+IncludeBlocks: Preserve
+ReflowComments: false
+SortUsingDeclarations: false
+SpacesBeforeTrailingComments: 1
+AllowShortFunctionsOnASingleLine: None
+BreakBeforeBinaryOperators: All
+AlignAfterOpenBracket:	true
+BreakBeforeBraces: Allman # true
+ColumnLimit: 160
+#IndentCaseLabels: true
+IndentPPDirectives: AfterHash
+KeepEmptyLinesAtTheStartOfBlocks: false
+PointerAlignment: Middle
+...
