@@ -3,6 +3,15 @@ Yes, this was the random name suggestion from the Github interface.
 
 This is an assessment project that a friend passed on to me from stuff they had done. I've done my implementation in C++.
 
+Build with Meson:
+
+meson setup build
+cd build
+meson install
+
+gcc on Windows requires 'libstdc++-6.dll' to run the built executible.
+The executible is output to bin/fantastic-bassoon.exe
+
 ## Nearest Vehicle Positions:
 
 Provided with a binary data file which contains a position for each of 2 million vehicles. Your task is to write a program that can find and list the registration numbers of the nearest vehicle position in the data file to each of the 10 co-ordinates provided below. In addition to being able to do this, however, your program must be able to complete all 10 lookups in less time than our benchmark. This benchmark is based on simply looping through each of the 2 million positions and keeping the closest to each given co-ordinate. This is simply repeated for each of the 10 provided co-ordinates.
