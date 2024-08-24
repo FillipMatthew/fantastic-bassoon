@@ -16,19 +16,40 @@ enum EDuplicateFilterType
 	DF_OLDEST = 2
 };
 
+template <typename T> struct SLocation
+{
+	T latitude;
+	T longitude;
+
+	bool operator<(const SLocation<T> & rhv) const
+	{
+		if (latitude != rhv.latitude)
+			return latitude < rhv.latitude;
+
+		if (longitude != rhv.longitude)
+			return longitude < rhv.longitude;
+
+		return false;
+	}
+};
+
+struct SGPSData
+{
+	SLocation<float> location;
+	uint64_t recordedTimeUTC;
+};
+
 struct SVehicleData
 {
 	int32_t id;
 	string registration;
-	float latitude;
-	float longitude;
-	uint64_t recordedTimeUTC;
+	vector<SGPSData> gpsData;
 };
 
-bool LoadDB(const string & fileName, vector<SVehicleData> & vehicles);
+bool LoadDB(const string & fileName, map<string, SVehicleData> & vehicles);
 bool ReadEntry(char * buffer, size_t bufferLen, SVehicleData & vehicle, size_t & read);
 void OutputVehicleDetails(const SVehicleData & vehicle);
-bool ParseParams(int argc, char ** argv, EDuplicateFilterType & duplicateFilter, uint32_t & blockSize);
+bool ParseParams(int argc, char ** argv, EDuplicateFilterType & duplicateFilter, float & blockSize);
 void PrintUsage();
 
 int main(int argc, char ** argv)
@@ -40,46 +61,58 @@ int main(int argc, char ** argv)
 	}
 
 	EDuplicateFilterType duplicateFilter = DF_NONE;
-	uint32_t blockSize = 100;
+	float blockSize = 5;
 	if (!ParseParams(argc, argv, duplicateFilter, blockSize))
 		return -1;
 
 	cout << "Using block size of " << blockSize << endl;
 
-	vector<SVehicleData> vehicles;
+	map<string, SVehicleData> vehicles;
 	if (!LoadDB(argv[1], vehicles))
 		return -1;
 
-	cout << "Loaded " << vehicles.size() << " entries." << endl;
-
-	map<string, const SVehicleData *> filteredVehicles;
+	map<SLocation<int32_t>, vector<const SVehicleData *>> sortedVehicles;
 
 	if (duplicateFilter == DF_NONE)
 	{
-		for (const auto & vehicle : vehicles)
+		for (const auto & vehicleIter : vehicles)
 		{
+			const auto & vehicle = vehicleIter.second;
+			for (const auto & gpsData : vehicle.gpsData)
+			{
+				SLocation<int32_t> loc { static_cast<int32_t>(gpsData.location.latitude / blockSize),
+					                     static_cast<int32_t>(gpsData.location.longitude / blockSize) };
+				sortedVehicles[loc].push_back(&vehicle);
+			}
 		}
 	}
 	else
 	{
-		size_t duplicates = 0;
-		for (const auto & vehicle : vehicles)
+		for (const auto & vehicleIter : vehicles)
 		{
-			auto iter = filteredVehicles.find(vehicle.registration);
-			if (iter == filteredVehicles.end())
-				filteredVehicles[vehicle.registration] = &vehicle;
-			else
+			const auto & vehicle = vehicleIter.second;
+
+			SGPSData filterMatch;
+			bool bFirst = true;
+			for (const auto & gpsData : vehicle.gpsData)
 			{
-				++duplicates;
-				if ((duplicateFilter == DF_LATEST && vehicle.recordedTimeUTC > iter->second->recordedTimeUTC)
-				    || (duplicateFilter == DF_OLDEST && vehicle.recordedTimeUTC <= iter->second->recordedTimeUTC))
+				if (bFirst)
 				{
-					iter->second = &vehicle;
+					bFirst = false;
+					filterMatch = gpsData;
+				}
+
+				if ((duplicateFilter == DF_LATEST && gpsData.recordedTimeUTC > filterMatch.recordedTimeUTC)
+				    || (duplicateFilter == DF_OLDEST && gpsData.recordedTimeUTC <= filterMatch.recordedTimeUTC))
+				{
+					filterMatch = gpsData;
 				}
 			}
-		}
 
-		cout << duplicates << " duplicates filtered." << endl;
+			SLocation<int32_t> loc { static_cast<int32_t>(filterMatch.location.latitude / blockSize),
+				                     static_cast<int32_t>(filterMatch.location.longitude / blockSize) };
+			sortedVehicles[loc].push_back(&vehicle);
+		}
 	}
 
 	ifstream searchParamFile;
@@ -94,16 +127,16 @@ int main(int argc, char ** argv)
 	{
 		istringstream iss(line);
 		long index;
-		double longitude, latitude;
-		iss >> index >> longitude >> latitude;
-		cout << "Searching (" << index << ") " << longitude << ", " << latitude << endl;
+		double latitude, longitude;
+		iss >> index >> latitude >> longitude;
+		cout << "Searching (" << index << ") " << latitude << ", " << longitude << endl;
 	}
 
 	cout << "Finished!" << endl;
 	return 0;
 }
 
-bool LoadDB(const string & fileName, vector<SVehicleData> & vehicles)
+bool LoadDB(const string & fileName, map<string, SVehicleData> & vehicles)
 {
 	ifstream dbFile;
 	dbFile.open(fileName, ios::binary);
@@ -116,6 +149,7 @@ bool LoadDB(const string & fileName, vector<SVehicleData> & vehicles)
 	static const size_t BUFFER_SIZE = 1024 * 1024;
 	array<char, BUFFER_SIZE> buffer;
 
+	size_t duplicates = 0;
 	size_t bufferLen = 0;
 	while (dbFile)
 	{
@@ -128,7 +162,12 @@ bool LoadDB(const string & fileName, vector<SVehicleData> & vehicles)
 		while (ReadEntry(buffer.data() + processed, bufferLen - processed, vehicle, read))
 		{
 			processed += read;
-			vehicles.push_back(vehicle);
+			auto result = vehicles.insert({ vehicle.registration, vehicle });
+			if (!result.second) // Already exist, add to GPS data
+			{
+				++duplicates;
+				result.first->second.gpsData.insert(result.first->second.gpsData.end(), vehicle.gpsData.begin(), vehicle.gpsData.end());
+			}
 		}
 
 		bufferLen -= processed;
@@ -137,13 +176,15 @@ bool LoadDB(const string & fileName, vector<SVehicleData> & vehicles)
 			memmove(buffer.data(), buffer.data() + processed, bufferLen);
 	}
 
+	cout << "Loaded " << vehicles.size() << " entries. " << duplicates << " duplicates." << endl;
+
 	return true;
 }
 
 bool ReadEntry(char * buffer, size_t bufferLen, SVehicleData & vehicle, size_t & read)
 {
-	constexpr size_t LAST_PART_SIZE = sizeof(vehicle.latitude) + sizeof(vehicle.longitude) + sizeof(vehicle.recordedTimeUTC);
-	constexpr size_t MIN_SIZE = sizeof(vehicle.id) + sizeof(char) /*null*/ + LAST_PART_SIZE;
+	constexpr size_t LAST_PART_SIZE = sizeof(SGPSData::location.latitude) + sizeof(SGPSData::location.longitude) + sizeof(SGPSData::recordedTimeUTC);
+	constexpr size_t MIN_SIZE = sizeof(SVehicleData::id) + sizeof(char) /*null*/ + LAST_PART_SIZE;
 	if (bufferLen < MIN_SIZE)
 		return false;
 
@@ -161,12 +202,15 @@ bool ReadEntry(char * buffer, size_t bufferLen, SVehicleData & vehicle, size_t &
 	if ((bufferLen - read) >= LAST_PART_SIZE)
 	{
 		vehicle.registration = string_view(buffer + sizeof(vehicle.id), (read - 1 /*don't include null*/) - sizeof(vehicle.id));
-		vehicle.latitude = *reinterpret_cast<float *>(buffer + read);
-		read += sizeof(vehicle.latitude);
-		vehicle.longitude = *reinterpret_cast<float *>(buffer + read);
-		read += sizeof(vehicle.longitude);
-		vehicle.recordedTimeUTC = *reinterpret_cast<uint64_t *>(buffer + read);
-		read += sizeof(vehicle.recordedTimeUTC);
+		SGPSData gpsData;
+		gpsData.location.latitude = *reinterpret_cast<float *>(buffer + read);
+		read += sizeof(SGPSData::location.latitude);
+		gpsData.location.longitude = *reinterpret_cast<float *>(buffer + read);
+		read += sizeof(SGPSData::location.longitude);
+		gpsData.recordedTimeUTC = *reinterpret_cast<uint64_t *>(buffer + read);
+		read += sizeof(SGPSData::recordedTimeUTC);
+		vehicle.gpsData.clear();
+		vehicle.gpsData.push_back(gpsData);
 		return true;
 	}
 
@@ -175,11 +219,12 @@ bool ReadEntry(char * buffer, size_t bufferLen, SVehicleData & vehicle, size_t &
 
 void OutputVehicleDetails(const SVehicleData & vehicle)
 {
-	cout << "ID: " << vehicle.id << " Reg: '" << vehicle.registration << "' lat: " << vehicle.latitude << " long: " << vehicle.longitude
-	     << " time: " << vehicle.recordedTimeUTC << endl;
+	cout << "ID: " << vehicle.id << "\tReg: '" << vehicle.registration << endl;
+	for (const auto & gpsData : vehicle.gpsData)
+		cout << "\t'lat: " << gpsData.location.latitude << "\tlong: " << gpsData.location.longitude << "\ttime: " << gpsData.recordedTimeUTC << endl;
 }
 
-bool ParseParams(int argc, char ** argv, EDuplicateFilterType & duplicateFilter, uint32_t & blockSize)
+bool ParseParams(int argc, char ** argv, EDuplicateFilterType & duplicateFilter, float & blockSize)
 {
 	// The params parsing is a mess :|
 	if (argc > 3)
@@ -192,7 +237,7 @@ bool ParseParams(int argc, char ** argv, EDuplicateFilterType & duplicateFilter,
 		{
 			try
 			{
-				blockSize = stoul(argv[3]);
+				blockSize = stof(argv[3]);
 			}
 			catch (const invalid_argument & e)
 			{
@@ -218,7 +263,7 @@ bool ParseParams(int argc, char ** argv, EDuplicateFilterType & duplicateFilter,
 			{
 				try
 				{
-					blockSize = stoul(argv[3]);
+					blockSize = stof(argv[3]);
 				}
 				catch (const invalid_argument & e)
 				{
