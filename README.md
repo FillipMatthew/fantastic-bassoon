@@ -5,8 +5,8 @@ This is an assessment project that a friend passed on to me from stuff they had 
 
 Build with Meson:
 
-meson setup build
-cd build
+meson setup build<br>
+cd build<br>
 meson install
 
 gcc on Windows requires 'libstdc++-6.dll' to run the built executible.
