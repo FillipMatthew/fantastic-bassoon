@@ -3,14 +3,16 @@ Yes, this was the random name suggestion from the Github interface.
 
 This is an assessment project that a friend passed on to me from stuff they had done. I've done my implementation in C++.
 
-Build with Meson:
-
+**Build with Meson:**<br>
 meson setup build<br>
 cd build<br>
 meson install
 
 gcc on Windows requires 'libstdc++-6.dll' to run the built executible.
 The executible is output to bin/fantastic-bassoon.exe
+
+**Usage:**<br>
+fantastic-bassoon db.dat search-params.txt
 
 ## Nearest Vehicle Positions:
 
