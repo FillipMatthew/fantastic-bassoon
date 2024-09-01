@@ -91,7 +91,6 @@ int main(int argc, char ** argv)
 		return -1;
 
 	auto loadedDataTime = chrono::system_clock::now();
-	cout << "Data loaded in: " << chrono::duration<double>(loadedDataTime - startTime) << endl;
 
 	auto startSortTime = chrono::system_clock::now();
 	map<SLocation<int32_t>, vector<SSortedVehicleData>> sortedVehicles;
@@ -139,7 +138,6 @@ int main(int argc, char ** argv)
 	}
 
 	auto finishedSortTime = chrono::system_clock::now();
-	cout << "Sorted data in: " << chrono::duration<double>(finishedSortTime - startSortTime) << endl;
 
 	ifstream searchParamFile;
 	searchParamFile.open(argv[2]);
@@ -163,7 +161,11 @@ int main(int argc, char ** argv)
 	}
 
 	auto finishedSearchTime = chrono::system_clock::now();
-	cout << "\nFinished search in: " << chrono::duration<double>(finishedSearchTime - startSearchTime) << endl;
+
+	cout << "\nData loaded in: " << chrono::duration<double>(loadedDataTime - startTime) << endl;
+	cout << "Sorted data in: " << chrono::duration<double>(finishedSortTime - startSortTime) << endl;
+	cout << "Finished search in: " << chrono::duration<double>(finishedSearchTime - startSearchTime) << endl;
+	cout << "Total time:" << chrono::duration<double>(finishedSearchTime - startTime) << endl;
 
 	return 0;
 }
